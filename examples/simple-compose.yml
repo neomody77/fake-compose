@@ -1,0 +1,31 @@
+version: '3.8'
+
+services:
+  app:
+    image: node:18-alpine
+    command: ["node", "server.js"]
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+    init_containers:
+      - name: install-deps
+        image: node:18-alpine
+        command: ["npm", "install", "--production"]
+        volumes:
+          - ./app:/app
+    post_containers:
+      - name: warmup
+        image: curlimages/curl:latest
+        command: ["curl", "-f", "http://app:3000/health"]
+        wait_for: "5s"
+        on_success: true
+    hooks:
+      pre_start:
+        - name: check-env
+          type: command
+          command: ["printenv"]
+      post_start:
+        - name: log-start
+          type: script
+          script: echo "Application started at $(date)"
