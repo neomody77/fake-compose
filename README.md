@@ -40,7 +40,7 @@ Hook types supported:
 ## Installation
 
 ```bash
-go get github.com/fake-compose/fake-compose
+go get github.com/neomody77/fake-compose-extended
 ```
 
 ## Usage

@@ -1,4 +1,4 @@
-module github.com/fake-compose/fake-compose
+module github.com/neomody77/fake-compose-extended
 
 go 1.23.0
 

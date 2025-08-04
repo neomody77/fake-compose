@@ -8,7 +8,7 @@ import (
 	"strings"
 
 	"gopkg.in/yaml.v3"
-	"github.com/fake-compose/fake-compose/pkg/compose"
+	"github.com/neomody77/fake-compose-extended/pkg/compose"
 )
 
 type Parser struct {
