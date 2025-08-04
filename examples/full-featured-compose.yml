@@ -1,0 +1,201 @@
+version: '3.8'
+
+services:
+  database:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: myapp
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    init_containers:
+      - name: db-init
+        image: busybox:latest
+        command: ["sh", "-c", "echo 'Initializing database directory...'"]
+        volumes:
+          - db-data:/data
+    hooks:
+      pre_start:
+        - name: check-disk-space
+          type: command
+          command: ["df", "-h"]
+      post_start:
+        - name: wait-for-db
+          type: script
+          script: |
+            echo "Waiting for database to be ready..."
+            sleep 5
+            echo "Database should be ready now"
+
+  webapp:
+    image: nginx:alpine
+    depends_on:
+      database:
+        condition: service_healthy
+    ports:
+      - "8080:80"
+    volumes:
+      - ./html:/usr/share/nginx/html:ro
+    environment:
+      DB_HOST: database
+      DB_PORT: 5432
+    init_containers:
+      - name: wait-for-db
+        image: busybox:latest
+        command: ["sh", "-c", "until nc -z database 5432; do echo 'Waiting for database...'; sleep 2; done"]
+      - name: prepare-config
+        image: busybox:latest
+        command: ["sh", "-c", "echo 'server { listen 80; }' > /config/nginx.conf"]
+        volumes:
+          - config:/config
+    post_containers:
+      - name: health-check
+        image: curlimages/curl:latest
+        command: ["curl", "-f", "http://webapp/"]
+        wait_for: "10s"
+        on_success: true
+      - name: log-failure
+        image: busybox:latest
+        command: ["sh", "-c", "echo 'Service failed to start properly' >> /logs/error.log"]
+        on_failure: true
+        volumes:
+          - logs:/logs
+    hooks:
+      pre_start:
+        - name: validate-config
+          type: command
+          command: ["nginx", "-t"]
+      post_start:
+        - name: notify-slack
+          type: http
+          http:
+            url: "${SLACK_WEBHOOK_URL}"
+            method: POST
+            headers:
+              Content-Type: application/json
+            body: '{"text": "Web service started successfully"}'
+          timeout: 5s
+          retries: 3
+      pre_stop:
+        - name: graceful-shutdown
+          type: exec
+          exec:
+            container: webapp
+            command: ["nginx", "-s", "quit"]
+    cloud_native:
+      kubernetes:
+        namespace: production
+        annotations:
+          prometheus.io/scrape: "true"
+          prometheus.io/port: "9090"
+        labels:
+          app: webapp
+          tier: frontend
+        resources:
+          limits:
+            cpu: "1"
+            memory: "512Mi"
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+      prometheus:
+        scrape_port: 9090
+        scrape_interval: "30s"
+        labels:
+          service: webapp
+          environment: production
+
+  worker:
+    build:
+      context: ./worker
+      dockerfile: Dockerfile
+      args:
+        WORKER_VERSION: "1.0.0"
+    depends_on:
+      - database
+    environment:
+      WORKER_THREADS: 4
+      DB_CONNECTION: "postgres://myuser:mypassword@database:5432/myapp"
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpu: "2"
+          memory: "1G"
+        requests:
+          cpu: "500m"
+          memory: "512M"
+    init_containers:
+      - name: migrate-db
+        image: migrate/migrate:latest
+        command: 
+          - "-path"
+          - "/migrations"
+          - "-database"
+          - "postgres://myuser:mypassword@database:5432/myapp?sslmode=disable"
+          - "up"
+        volumes:
+          - ./migrations:/migrations:ro
+    hooks:
+      pre_build:
+        - name: lint-code
+          type: command
+          command: ["golangci-lint", "run"]
+      post_build:
+        - name: scan-image
+          type: command
+          command: ["trivy", "image", "worker:latest"]
+      pre_deploy:
+        - name: backup-database
+          type: script
+          script: |
+            pg_dump -h database -U myuser myapp > backup-$(date +%Y%m%d).sql
+      post_deploy:
+        - name: smoke-test
+          type: command
+          command: ["./scripts/smoke-test.sh"]
+    cloud_native:
+      helm:
+        chart: worker-chart
+        repository: https://charts.example.com
+        version: "2.1.0"
+        values:
+          autoscaling:
+            enabled: true
+            minReplicas: 2
+            maxReplicas: 10
+          monitoring:
+            enabled: true
+      istio:
+        virtual_service:
+          http:
+            - match:
+                - headers:
+                    x-version:
+                      exact: canary
+              route:
+                - destination:
+                    host: worker
+                    subset: canary
+                  weight: 10
+                - destination:
+                    host: worker
+                    subset: stable
+                  weight: 90
+
+volumes:
+  db-data:
+  config:
+  logs:
+
+networks:
+  default:
+    driver: bridge

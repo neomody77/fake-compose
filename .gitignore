@@ -1,0 +1,81 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+fake-compose
+docker-compose
+cmd/fake-compose/fake-compose
+cmd/docker-compose/docker-compose
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool
+coverage.out
+*.cover
+*.prof
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Log files
+*.log
+logs/
+
+# Docker volumes and data
+data/
+volumes/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Node modules (if any)
+node_modules/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+.env.test
+*.pem
+*.key
+*.crt
+secrets/
+
+# Docker plugin installation path
+~/.docker/cli-plugins/docker-compose
