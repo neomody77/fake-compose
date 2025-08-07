@@ -6,9 +6,9 @@ import (
 	"sync"
 
 	"github.com/sirupsen/logrus"
-	"github.com/neomody77/fake-compose-extended/pkg/compose"
-	"github.com/neomody77/fake-compose-extended/pkg/container"
-	"github.com/neomody77/fake-compose-extended/pkg/lifecycle"
+	"github.com/neomody77/fake-compose/pkg/compose"
+	"github.com/neomody77/fake-compose/pkg/container"
+	"github.com/neomody77/fake-compose/pkg/lifecycle"
 )
 
 type Executor struct {

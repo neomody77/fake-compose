@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/fake-compose/fake-compose/pkg/compose"
+	"github.com/neomody77/fake-compose/pkg/compose"
 )
 
 type Executor struct {

@@ -1,0 +1,120 @@
+version: '3.8'
+
+services:
+  singbox-router:
+    image: ghcr.io/sagernet/sing-box:latest
+    container_name: singbox-router
+    restart: unless-stopped
+    ports:
+      - "1080:1080"
+      - "1081:1081"
+      - "9090:9090"
+    volumes:
+      - /tmp/singbox-config:/etc/sing-box
+      - /tmp/singbox-data:/var/lib/sing-box
+    environment:
+      SING_BOX_CONFIG: "/etc/sing-box/config.json"
+      LOG_LEVEL: "info"
+    command: ["sing-box", "run", "-c", "/etc/sing-box/config.json"]
+    
+    # Init container to prepare configuration
+    init_containers:
+      - name: config-setup
+        image: alpine:latest
+        command: ["sh", "-c", "mkdir -p /etc/sing-box /var/lib/sing-box && echo 'Config directories created'"]
+        volumes:
+          - /tmp/singbox-config:/etc/sing-box
+          - /tmp/singbox-data:/var/lib/sing-box
+    
+    # Post container to verify router is working
+    post_containers:
+      - name: router-healthcheck
+        image: curlimages/curl:latest
+        command: ["curl", "-f", "http://singbox-router:9090/"]
+        wait_for: "10s"
+        on_success: true
+        on_failure: false
+    
+    # Lifecycle hooks
+    hooks:
+      pre_start:
+        - name: create-directories
+          type: command
+          command: ["mkdir", "-p", "/tmp/singbox-config", "/tmp/singbox-data"]
+      post_start:
+        - name: log-startup
+          type: script
+          script: "echo 'SingBox router started successfully'"
+      pre_stop:
+        - name: backup-logs
+          type: script
+          script: "echo 'Backing up SingBox logs before shutdown'"
+
+  curl-client:
+    image: curlimages/curl:latest
+    container_name: curl-client
+    restart: unless-stopped
+    depends_on:
+      singbox-router:
+        condition: service_started
+    environment:
+      HTTP_PROXY: "http://singbox-router:1081"
+      HTTPS_PROXY: "http://singbox-router:1081"
+      ALL_PROXY: "socks5://singbox-router:1080"
+      CURL_INTERVAL: "5"
+      TARGET_URL: "ipinfo.io"
+    
+    # Main command: curl loop
+    command: ["sh", "-c", "echo 'Starting curl client with proxy routing' && while true; do echo '=== $(date) ==='; curl -s --max-time 10 $TARGET_URL || echo 'Request failed'; sleep $CURL_INTERVAL; done"]
+    
+    # Init container to prepare tools
+    init_containers:
+      - name: install-tools
+        image: alpine:latest
+        command: ["sh", "-c", "apk add --no-cache jq && echo 'Tools installed successfully'"]
+    
+    # Post containers for monitoring
+    post_containers:
+      - name: connection-test
+        image: curlimages/curl:latest
+        command: ["sh", "-c", "echo 'Testing connectivity' && curl -s --max-time 5 http://ipinfo.io && echo 'Connection test passed'"]
+        wait_for: "15s"
+        on_success: true
+        
+      - name: log-collector
+        image: alpine:latest
+        command: ["sh", "-c", "echo 'curl-client container started, beginning request loop'"]
+        wait_for: "5s"
+        on_success: true
+    
+    # Lifecycle hooks
+    hooks:
+      pre_start:
+        - name: wait-for-router
+          type: command
+          command: ["sleep", "5"]
+      post_start:
+        - name: notify-start
+          type: http
+          http:
+            url: "http://httpbin.org/post"
+            method: "POST"
+            headers:
+              Content-Type: "application/json"
+            body: '{"event": "curl-client-started", "service": "curl-client"}'
+      pre_stop:
+        - name: final-request
+          type: script
+          script: "echo 'Performing final network test before shutdown'"
+
+# Volumes
+volumes:
+  singbox-config:
+    driver: local  
+  singbox-data:
+    driver: local
+
+# Networks
+networks:
+  default:
+    driver: bridge

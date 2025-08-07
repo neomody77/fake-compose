@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/sirupsen/logrus"
-	"github.com/fake-compose/fake-compose/pkg/compose"
-	"github.com/fake-compose/fake-compose/pkg/hooks"
+	"github.com/neomody77/fake-compose/pkg/compose"
+	"github.com/neomody77/fake-compose/pkg/hooks"
 )
 
 type Phase string
